@@ -10,10 +10,12 @@ export function getDb(): D1Db {
   return drizzle((env as { DB: D1Database }).DB, { schema });
 }
 
-// Existing API routes use `db.select()`, `db.insert()`, etc. The proxy keeps
-// those routes unchanged while resolving the Cloudflare D1 binding per request.
+// Resolve and bind each Drizzle method to the D1 client for the current request.
+// This keeps the existing API route code (db.select(), db.insert(), etc.) working.
 export const db = new Proxy({} as D1Db, {
   get(_target, property) {
-    return (getDb() as unknown as Record<PropertyKey, unknown>)[property];
+    const database = getDb() as unknown as Record<PropertyKey, unknown>;
+    const value = database[property];
+    return typeof value === "function" ? value.bind(database) : value;
   },
 });
