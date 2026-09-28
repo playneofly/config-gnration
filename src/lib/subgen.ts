@@ -41,7 +41,7 @@ function sbTls(c: ConfigInput): Record<string, unknown> | undefined {
   return tls;
 }
 
-function sbOutbound(c: ConfigInput): Record<string, unknown> {
+function sbOutbound(c: ConfigInput): Record<string, unknown> | null {
   const base = {
     tag: c.name,
     server: c.host,
@@ -97,11 +97,33 @@ function sbOutbound(c: ConfigInput): Record<string, unknown> {
         ...(c.mtu ? { mtu: c.mtu } : {}),
       };
     }
+    case "hysteria2":
+      return {
+        type: "hysteria2",
+        ...base,
+        password: c.password,
+        ...(sbTls(c) ? { tls: sbTls(c) } : {}),
+      };
+    case "tuic":
+      return {
+        type: "tuic",
+        ...base,
+        uuid: c.uuid,
+        password: c.password,
+        ...(sbTls(c) ? { tls: sbTls(c) } : {}),
+      };
+    default:
+      return null;
   }
 }
 
 export function buildSingBoxConfig(configs: ConfigInput[]): string {
-  const tags = configs.map((c) => c.name);
+  const outs = configs
+    .map((c) => ({ c, outbound: sbOutbound(c) }))
+    .filter((x): x is { c: ConfigInput; outbound: Record<string, unknown> } =>
+      Boolean(x.outbound)
+    );
+  const tags = outs.map((x) => x.c.name);
   const doc = {
     log: { level: "warn", timestamp: true },
     dns: {
@@ -133,7 +155,7 @@ export function buildSingBoxConfig(configs: ConfigInput[]): string {
         interval: "10m",
         tolerance: 50,
       },
-      ...configs.map(sbOutbound),
+      ...outs.map((x) => x.outbound),
       { type: "direct", tag: "direct" },
     ],
   };

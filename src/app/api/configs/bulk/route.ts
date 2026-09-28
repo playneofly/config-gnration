@@ -3,7 +3,8 @@ import { db } from "@/db";
 import { configs } from "@/db/schema";
 import { MIXED_PROTOCOL_CYCLE, randomPath, randomSni } from "@/lib/auto";
 import { buildShareLink } from "@/lib/share";
-import { newUuid, randInt, randomPassword } from "@/lib/utils";
+import { fingerprint } from "@/lib/sync";
+import { newUuid, randInt, randomToken } from "@/lib/utils";
 import type { ConfigInput } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -128,12 +129,13 @@ export async function POST(req: Request) {
               : null
             : null,
           uuid: isXrayId ? newUuid() : null,
-          password: needsPass ? randomPassword(14) : null,
+          password: needsPass ? randomToken(14) : null,
           enabled: true,
           extras: {},
         };
         allInputs.push(input);
         values.push({
+          fingerprint: fingerprint(input),
           name: input.name,
           protocol: input.protocol,
           host: input.host,
@@ -153,7 +155,11 @@ export async function POST(req: Request) {
         });
       }
 
-      const inserted = await db.insert(configs).values(values).returning({
+      const inserted = await db
+        .insert(configs)
+        .values(values)
+        .onConflictDoNothing({ target: configs.fingerprint })
+        .returning({
         id: configs.id,
       });
       created += inserted.length;

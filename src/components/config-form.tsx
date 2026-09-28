@@ -18,7 +18,7 @@ import type {
   Security,
   Transport,
 } from "@/lib/types";
-import { newUuid, randomPassword } from "@/lib/utils";
+import { newUuid, randomToken } from "@/lib/utils";
 import { useToast } from "./providers";
 import QrModal from "./qr-modal";
 import {
@@ -252,7 +252,7 @@ export default function ConfigForm({
                   type="button"
                   variant="ghost"
                   className="shrink-0 px-3"
-                  onClick={() => set("password", randomPassword(16))}
+                  onClick={() => set("password", randomToken(16))}
                   title="رمز تصادفی"
                 >
                   <Dices className="size-4" />

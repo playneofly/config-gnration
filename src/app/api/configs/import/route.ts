@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { configs } from "@/db/schema";
 import { buildShareLink, validateConfig } from "@/lib/share";
+import { fingerprint } from "@/lib/sync";
 import type { ConfigInput } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
         continue;
       }
       good.push({
+        fingerprint: fingerprint(c),
         name: c.name.trim(),
         protocol: c.protocol,
         host: c.host.trim(),
@@ -52,7 +54,11 @@ export async function POST(req: Request) {
       });
     }
     const inserted = good.length
-      ? await db.insert(configs).values(good).returning({ id: configs.id })
+      ? await db
+          .insert(configs)
+          .values(good)
+          .onConflictDoNothing({ target: configs.fingerprint })
+          .returning({ id: configs.id })
       : [];
     return NextResponse.json(
       { created: inserted.length, skipped, sample: good.slice(0, 3).map((g) => buildShareLink(g as ConfigInput)) },

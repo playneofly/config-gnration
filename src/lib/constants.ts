@@ -8,6 +8,7 @@ export const PROTOCOL_META: Record<
     defaultPort: number;
     badge: string;
     dot: string;
+    glow: string;
   }
 > = {
   vless: {
@@ -16,6 +17,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 443,
     badge: "bg-cyan-400/10 text-cyan-300 ring-cyan-400/30",
     dot: "bg-cyan-400",
+    glow: "from-cyan-400/60",
   },
   vmess: {
     label: "VMess",
@@ -23,6 +25,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 443,
     badge: "bg-violet-400/10 text-violet-300 ring-violet-400/30",
     dot: "bg-violet-400",
+    glow: "from-violet-400/60",
   },
   trojan: {
     label: "Trojan",
@@ -30,6 +33,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 443,
     badge: "bg-rose-400/10 text-rose-300 ring-rose-400/30",
     dot: "bg-rose-400",
+    glow: "from-rose-400/60",
   },
   shadowsocks: {
     label: "Shadowsocks",
@@ -37,6 +41,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 8388,
     badge: "bg-amber-400/10 text-amber-300 ring-amber-400/30",
     dot: "bg-amber-400",
+    glow: "from-amber-400/60",
   },
   wireguard: {
     label: "WireGuard",
@@ -44,6 +49,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 1701,
     badge: "bg-emerald-400/10 text-emerald-300 ring-emerald-400/30",
     dot: "bg-emerald-400",
+    glow: "from-emerald-400/60",
   },
   hysteria2: {
     label: "Hysteria2",
@@ -51,6 +57,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 443,
     badge: "bg-sky-400/10 text-sky-300 ring-sky-400/30",
     dot: "bg-sky-400",
+    glow: "from-sky-400/60",
   },
   tuic: {
     label: "TUIC",
@@ -58,6 +65,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 443,
     badge: "bg-indigo-400/10 text-indigo-300 ring-indigo-400/30",
     dot: "bg-indigo-400",
+    glow: "from-indigo-400/60",
   },
   ssr: {
     label: "SSR",
@@ -65,6 +73,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 8388,
     badge: "bg-orange-400/10 text-orange-300 ring-orange-400/30",
     dot: "bg-orange-400",
+    glow: "from-orange-400/60",
   },
   other: {
     label: "سایر",
@@ -72,6 +81,7 @@ export const PROTOCOL_META: Record<
     defaultPort: 443,
     badge: "bg-zinc-400/10 text-zinc-300 ring-zinc-400/30",
     dot: "bg-zinc-400",
+    glow: "from-zinc-400/60",
   },
 };
 
@@ -113,4 +123,16 @@ export const SUPPORTED_SCHEMES = [
   "hysteria2",
   "hy2",
   "tuic",
+];
+
+/** میزبان‌های تمیز (پشت شبکه‌ی کلادفلر) مناسب برای آدرس/هاست کانفیگ */
+export const CLEAN_HOSTS_PRESET = [
+  "www.speedtest.net",
+  "speedtest.net",
+  "www.cloudflare.com",
+  "discord.com",
+  "cdn.discordapp.com",
+  "zula.ir",
+  "icook.hk",
+  "go.inmobi.com",
 ];

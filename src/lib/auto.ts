@@ -1,5 +1,5 @@
 import { CLEAN_HOSTS_PRESET, SS_CIPHERS } from "./constants";
-import { newUuid, randInt, randomPassword } from "./utils";
+import { newUuid, randInt, randomToken } from "./utils";
 import type { ConfigInput, Protocol, Security, Transport } from "./types";
 
 /* ---------- مخزن‌های خودکار ---------- */
@@ -166,7 +166,7 @@ export function generateAutoConfig(
       const transport: Transport = Math.random() < 0.7 ? "ws" : "grpc";
       return {
         ...base,
-        password: randomPassword(16),
+        password: randomToken(16),
         security: "tls",
         transport,
         sni: randomSni(),
@@ -178,7 +178,7 @@ export function generateAutoConfig(
       return {
         ...base,
         port: pick([8388, 443, 853, 8080]),
-        password: randomPassword(18),
+        password: randomToken(18),
         method: pick(SS_CIPHERS.slice(0, 4)),
         security: "none",
         transport: "tcp",
@@ -198,6 +198,31 @@ export function generateAutoConfig(
         transport: "tcp",
       };
     }
+    case "hysteria2":
+      return {
+        ...base,
+        password: randomToken(18),
+        security: "tls",
+        transport: "udp",
+        sni: randomSni(),
+      };
+    case "tuic":
+      return {
+        ...base,
+        uuid: newUuid(),
+        password: randomToken(16),
+        security: "tls",
+        transport: "udp",
+        sni: randomSni(),
+      };
+    default:
+      // ssr / other: پروکسی ساده بر پایه‌ی رمز
+      return {
+        ...base,
+        password: randomToken(16),
+        security: "none",
+        transport: "tcp",
+      };
   }
 }
 
