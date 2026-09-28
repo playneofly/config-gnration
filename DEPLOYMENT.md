@@ -1,29 +1,58 @@
-# Deployment notes
+# راهنمای دیپلوی
 
-This is a full Next.js application: it contains server API routes and uses PostgreSQL.
-It cannot be deployed as a static Cloudflare Pages site by only selecting the `.next`
-folder. The app needs a Next.js server runtime and a PostgreSQL connection.
+این نسخه‌ی بازنویسی‌شده با **PostgreSQL خارجی** کار می‌کند (دیگر D1 لازم نیست) و جدول‌ها را در اولین اجرا **خودکار** می‌سازد.
 
-## Recommended: Vercel
+---
 
-1. Import `playneofly/config-gnration` into Vercel.
-2. Framework preset: **Next.js**.
-3. Build command: `npm run build`.
-4. Add `DATABASE_URL` under Project Settings → Environment Variables.
-5. Redeploy.
+## ۱) رفع خطای قبلی Cloudflare (`npm ci` failed)
 
-Use a hosted PostgreSQL database such as Neon, Supabase, or Railway. The database must
-be reachable from the deployment and the URL should normally include `sslmode=require`.
+علت خطا: فایل `package-lock.json` قدیمی با `package.json` جدید هماهنگ نبود.
+**قانون طلایی:** هر بار که کد را به‌روز می‌کنید، **هر دو فایل** `package.json` و `package-lock.json` را با هم کامیت کنید. هیچ‌وقت لاک‌فایل قدیمی را با package.json جدید مخلوط نکنید.
 
-## If staying on Cloudflare
+---
 
-Use **Cloudflare Workers + the OpenNext adapter**, not a plain Pages static deployment.
-Also use a serverless PostgreSQL driver/adapter supported by Cloudflare Workers (for
-example Neon HTTP/serverless), or move the API/database portion to a separate service.
-The current `pg`/Node runtime setup is not a plain Cloudflare Pages static build.
+## ۲) ساخت دیتابیس PostgreSQL رایگان (۲ دقیقه)
 
-## Important
+1. وارد [neon.tech](https://neon.tech) شوید (یا Supabase) و یک پروژه‌ی رایگان بسازید.
+2. رشته‌ی اتصال (Connection String) را کپی کنید؛ چیزی شبیه:
+   `postgresql://user:pass@ep-xxx.eu-central-1.aws.neon.tech/dbname?sslmode=require`
 
-The build will complete after this patch, but config CRUD/API operations still require a
-real `DATABASE_URL`. Do not commit the actual password; configure it as a secret in the
-hosting dashboard.
+## ۳) تنظیمات Cloudflare Workers
+
+در داشبورد Workers & Pages روی پروژه:
+
+**Settings → Variables and Secrets** — یک Secret جدید:
+
+| Name | Value |
+|---|---|
+| `DATABASE_URL` | رشته‌ی اتصال Neon از مرحله‌ی قبل |
+
+**Settings → Build:**
+
+| فیلد | مقدار |
+|---|---|
+| Framework preset | `Next.js` |
+| Build command | `npx opennextjs-cloudflare build` |
+| Deploy command | `npx wrangler deploy` |
+
+سپس آخرین کد را (شامل `package-lock.json` جدید) push کنید؛ بیلد سبز می‌شود و جدول‌ها در اولین درخواست خودکار ساخته می‌شوند.
+
+> در `wrangler.jsonc` فلگ `nodejs_compat` فعال است — برای کارکردن `pg` و تست اتصال TCP/TLS داخل Workers ضروری است.
+> اتصال D1 قدیمی دیگر استفاده نمی‌شود و می‌توانید binding آن را حذف کنید.
+
+---
+
+## ۴) جایگزین پیشنهادی: Vercel (ساده‌تر)
+
+اگر کلادفلر اجباری نیست، این پروژه روی Vercel بدون هیچ تنظیمی کار می‌کند:
+
+1. پروژه را در [vercel.com](https://vercel.com) ایمپورت کنید.
+2. در Environment Variables فقط `DATABASE_URL` را بگذارید.
+3. Deploy — تمام.
+
+---
+
+## ۵) نکته درباره‌ی محدودیت پلن رایگان Workers
+
+- ساخت دسته‌ای چندین fetch و تا ۱۵۰ تست اتصال انجام می‌دهد؛ پلن رایگان Workers محدودیت subrequest دارد (۵۰ در هر invocation). روی پلن رایگان ممکن است فقط بخشی از تست‌ها انجام شود — بقیه با دکمه‌ی «تست گروهی» در صفحه‌ی کانفیگ‌ها تکمیل می‌شود.
+- کانفیگ‌های پروتکل UDP (Hysteria2/TUIC) با TCP قابل تست نیستند و «تست‌نشده» می‌مانند — این طبیعی است و همان‌طور که هستند در اشتراک قرار می‌گیرند.

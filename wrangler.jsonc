@@ -7,12 +7,7 @@
   "assets": {
     "binding": "ASSETS",
     "directory": ".open-next/assets"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "config-gnration-db",
-      "database_id": "f85acf6b-7de7-43ca-a8b5-ab0c5c016a77"
-    }
-  ]
+  }
+  // نکته: دیتابیس این پروژه PostgreSQL خارجی است (متغیر DATABASE_URL).
+  // از داشبورد کلادفلر: Settings → Variables and Secrets → افزودن Secret با نام DATABASE_URL
 }
