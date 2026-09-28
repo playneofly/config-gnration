@@ -3,10 +3,14 @@ export type Protocol =
   | "vmess"
   | "trojan"
   | "shadowsocks"
-  | "wireguard";
+  | "wireguard"
+  | "hysteria2"
+  | "tuic"
+  | "ssr"
+  | "other";
 
-export type Transport = "ws" | "tcp" | "grpc" | "httpupgrade";
 export type Security = "tls" | "none" | "reality";
+export type Transport = "ws" | "tcp" | "grpc" | "httpupgrade" | "udp";
 
 export interface ConfigInput {
   name: string;
@@ -28,31 +32,37 @@ export interface ConfigInput {
   localAddress?: string | null;
   reserved?: string | null;
   mtu?: number | null;
-  enabled: boolean;
+  enabled?: boolean;
+  rawLink?: string | null;
   extras?: Record<string, string>;
 }
 
 export interface ConfigWithShare extends ConfigInput {
   id: number;
-  createdAt: string;
   share: string;
-}
-
-export interface SubscriptionDto {
-  id: number;
-  name: string;
-  token: string;
-  mode: "all" | "selected";
-  configIds: number[];
+  alive: boolean | null;
+  latency: number | null;
+  source: string;
+  lastTestedAt: string | null;
   createdAt: string;
-  count?: number;
 }
 
-export interface ParsedImport {
+export interface SyncSourceResult {
+  name: string;
+  url: string;
   ok: boolean;
+  lines: number;
   error?: string;
-  raw: string;
-  config?: ConfigInput;
 }
 
-export type SubFormat = "v2ray" | "singbox" | "clash" | "raw";
+export interface SyncReport {
+  fetchedLines: number;
+  parsed: number;
+  inserted: number;
+  duplicates: number;
+  failed: number;
+  tested: number;
+  aliveCount: number;
+  sources: SyncSourceResult[];
+  durationMs: number;
+}

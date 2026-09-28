@@ -1,177 +1,125 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ClipboardPaste, Download, FileSearch } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
-import { useToast } from "@/components/providers";
-import {
-  Button,
-  Field,
-  PageHeader,
-  ProBadge,
-  TextArea,
-} from "@/components/primitives";
-import { b64decode, parseShareLinks } from "@/lib/share";
-import type { ConfigInput } from "@/lib/types";
+import { useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CheckCircle2, FileUp, Loader2, ScanText, XCircle } from "lucide-react";
+import { PageHeader } from "@/components/shared";
+import { cn, faNum } from "@/lib/utils";
+
+interface ImportResult {
+  parsed: number;
+  inserted: number;
+  duplicates: number;
+  failed: number;
+}
 
 export default function ImportPage() {
-  const { push } = useToast();
   const [text, setText] = useState("");
-  const [parsed, setParsed] = useState<{
-    configs: ConfigInput[];
-    failed: string[];
-  } | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<ImportResult | null>(null);
 
-  function analyze() {
-    let input = text.trim();
-    if (!input) return push("ابتدا لینک‌ها را وارد کنید", "error");
-    // پشتیبانی از متن Base64 اشتراک
-    if (!input.includes("://")) {
-      try {
-        const decoded = b64decode(input.replace(/\s/g, ""));
-        if (decoded.includes("://")) input = decoded;
-      } catch {
-        /* ignore */
-      }
-    }
-    const result = parseShareLinks(input);
-    if (!result.configs.length && !result.failed.length)
-      return push("هیچ لینکی پیدا نشد", "error");
-    setParsed(result);
-    setDone(false);
-    if (!result.configs.length)
-      push("هیچ‌کدام از لینک‌ها معتبر نبود", "error");
-  }
+  const detected = useMemo(() => {
+    const t = text.trim();
+    if (!t) return 0;
+    return t.split(/\r?\n/).filter((l) => l.trim().includes("://")).length + (t.includes("://") ? 0 : t.length > 40 ? 1 : 0);
+  }, [text]);
 
-  async function save() {
-    if (!parsed?.configs.length) return;
-    setSaving(true);
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    setResult(null);
     try {
-      const res = await fetch("/api/configs/import", {
+      const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: parsed.configs }),
+        body: JSON.stringify({ text }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "خطا");
-      push(`${Number(data.created).toLocaleString("fa-IR")} کانفیگ وارد شد`);
-      setDone(true);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "خطا در وارد کردن");
+      setResult(json);
+      setText("");
     } catch (e) {
-      push(e instanceof Error ? e.message : "خطا در ذخیره", "error");
+      setError(e instanceof Error ? e.message : "خطای ناشناخته");
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
-  }
+  };
 
   return (
-    <div>
+    <div className="mx-auto max-w-3xl">
       <PageHeader
         title="وارد کردن کانفیگ"
-        desc="لینک‌های vless، vmess، trojan، ss یا wireguard را بچسبانید — حتی متن Base64 یک اشتراک هم پذیرفته می‌شود."
+        desc="لینک‌های خودتان را اینجا بچسبانید — هر خط یک لینک، یا کل محتوای base64 یک سابسکریپشن. تکراری‌ها خودکار حذف می‌شوند."
       />
 
-      <div className="glass rounded-3xl p-5 sm:p-6">
-        <Field label="لینک‌ها (در هر خط یک لینک)">
-          <TextArea
-            dir="ltr"
-            rows={9}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={"vless://uuid@host:443?security=tls&type=ws&path=%2F#name\nss://...\nvmess://..."}
-            className="text-left font-mono text-xs leading-6"
-          />
-        </Field>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="soft" onClick={analyze}>
-            <FileSearch className="size-4" />
-            تحلیل لینک‌ها
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              try {
-                const t = await navigator.clipboard.readText();
-                setText(t);
-                push("از کلیپ‌برد خوانده شد");
-              } catch {
-                push("دسترسی به کلیپ‌برد ممکن نیست", "error");
-              }
-            }}
-          >
-            <ClipboardPaste className="size-4" />
-            چسباندن از کلیپ‌برد
-          </Button>
+      <div className="glass rounded-3xl p-6 sm:p-8">
+        <div className="mb-2 flex items-center justify-between">
+          <label className="flex items-center gap-2 text-xs font-bold text-zinc-300">
+            <ScanText className="size-4 text-cyan-300" />
+            لینک‌ها یا محتوای سابسکریپشن
+          </label>
+          <span className="num text-[11px] text-zinc-500">
+            {detected > 0 ? `${faNum(detected)} ورودی شناسایی شد` : "—"}
+          </span>
         </div>
-      </div>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          dir="ltr"
+          rows={12}
+          spellCheck={false}
+          placeholder={"vless://…\nvmess://…\ntrojan://…\nss://…\n\nیا محتوای base64 سابسکریپشن"}
+          className="field resize-y font-mono text-left text-[11px] leading-5"
+        />
 
-      <AnimatePresence>
-        {parsed && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="glass mt-6 rounded-3xl p-5 sm:p-6"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-extrabold text-white">
-                <span className="text-emerald-400">
-                  {parsed.configs.length.toLocaleString("fa-IR")} لینک معتبر
-                </span>
-                {parsed.failed.length > 0 && (
-                  <span className="text-rose-400">
-                    {" "}
-                    · {parsed.failed.length.toLocaleString("fa-IR")} نامعتبر
-                  </span>
-                )}
-              </h3>
-              <div className="flex gap-2">
-                {done ? (
-                  <Link href="/configs">
-                    <Button variant="soft">
-                      مشاهده فهرست کانفیگ‌ها
-                      <ArrowLeft className="size-4" />
-                    </Button>
-                  </Link>
-                ) : (
-                  <Button onClick={save} disabled={saving || !parsed.configs.length}>
-                    <Download className="size-4" />
-                    {saving ? "در حال ذخیره…" : "ذخیره همه"}
-                  </Button>
-                )}
-              </div>
-            </div>
+        <button
+          onClick={run}
+          disabled={busy || !text.trim()}
+          className={cn(
+            "mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-cyan-400 to-violet-500 px-6 py-3.5 text-sm font-black text-zinc-950 transition disabled:cursor-not-allowed disabled:opacity-50",
+            !busy && text.trim() && "hover:brightness-110 active:scale-[0.99]"
+          )}
+        >
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" strokeWidth={2.5} />}
+          {busy ? "در حال پردازش…" : "وارد کردن به مخزن"}
+        </button>
 
-            <div className="mt-4 max-h-80 space-y-1.5 overflow-y-auto pl-1">
-              {parsed.configs.map((c, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2.5 rounded-xl bg-white/[0.03] px-3 py-2.5 ring-1 ring-white/[0.05]"
-                >
-                  <ProBadge protocol={c.protocol} />
-                  <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-200">
-                    {c.name}
-                  </span>
-                  <span dir="ltr" className="font-mono text-[10px] text-slate-500">
-                    {c.host}:{c.port}
-                  </span>
-                </div>
-              ))}
-              {parsed.failed.map((f, i) => (
-                <div
-                  key={`f-${i}`}
-                  dir="ltr"
-                  className="truncate rounded-xl bg-rose-500/[0.06] px-3 py-2.5 text-left font-mono text-[10px] text-rose-300/80 ring-1 ring-rose-400/10"
-                >
-                  {f}
-                </div>
-              ))}
-            </div>
-          </motion.div>
+        {error && (
+          <p className="mt-4 flex items-center gap-2 rounded-xl bg-rose-400/10 px-4 py-2.5 text-xs font-semibold text-rose-300 ring-1 ring-rose-400/25">
+            <XCircle className="size-4 shrink-0" />
+            {error}
+          </p>
         )}
-      </AnimatePresence>
+
+        <AnimatePresence>
+          {result && (
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4"
+            >
+              <ResultBox label="پارس شده" value={faNum(result.parsed)} tone="text-zinc-200" />
+              <ResultBox label="ذخیره جدید" value={faNum(result.inserted)} tone="text-emerald-300" icon={<CheckCircle2 className="size-3.5" />} />
+              <ResultBox label="تکراری" value={faNum(result.duplicates)} tone="text-amber-300" />
+              <ResultBox label="نامعتبر" value={faNum(result.failed)} tone="text-rose-300" />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function ResultBox({ label, value, tone, icon }: { label: string; value: string; tone: string; icon?: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4 text-center">
+      <p className={cn("num flex items-center justify-center gap-1 text-xl font-black", tone)}>
+        {icon}
+        {value}
+      </p>
+      <p className="mt-1 text-[10px] font-semibold text-zinc-500">{label}</p>
     </div>
   );
 }

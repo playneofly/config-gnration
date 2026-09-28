@@ -1,50 +1,32 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import Providers from "@/components/providers";
-import Sidebar, { MobileNav } from "@/components/sidebar";
+import Sidebar from "@/components/sidebar";
+import BackgroundFx from "@/components/background-fx";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "پنل نئون | سازنده نامحدود کانفیگ",
+  title: "ویتوری‌ساز | مولد کانفیگ واقعی V2Ray",
   description:
-    "ساخت و مدیریت نامحدود کانفیگ‌های VLESS، VMess، Trojan، Shadowsocks و WireGuard با لینک اشتراک یکپارچه",
+    "ساخت، جمع‌آوری و تست کانفیگ‌های واقعی VLESS، VMess، Trojan و Shadowsocks از منابع زنده با خروجی سابسکریپشن",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#09090f",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="fa" dir="rtl">
-      <head>
-        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css"
-        />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
-        />
-      </head>
-      <body className="font-sans bg-[#05060b] text-slate-200 antialiased">
-        {/* پس‌زمینه محیطی */}
-        <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-          <div className="bg-grid absolute inset-0" />
-          <div className="animate-floaty absolute -top-44 right-[8%] size-[36rem] rounded-full bg-violet-600/20 blur-[150px]" />
-          <div className="absolute -bottom-40 left-[4%] size-[32rem] rounded-full bg-cyan-500/[0.13] blur-[140px]" />
-          <div className="absolute top-1/2 left-1/2 size-[26rem] -translate-x-1/2 rounded-full bg-fuchsia-600/[0.08] blur-[130px]" />
+      <body className="min-h-dvh font-sans antialiased">
+        <BackgroundFx />
+        <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-[1500px]">
+          <Sidebar />
+          <main className="flex-1 px-4 pb-28 pt-6 sm:px-8 lg:pb-12 lg:pt-10">
+            {children}
+          </main>
         </div>
-
-        <Providers>
-          <div className="relative z-10 flex min-h-dvh">
-            <Sidebar />
-            <div className="min-w-0 flex-1 lg:mr-72">
-              <MobileNav />
-              <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-6 lg:px-10 lg:pt-10">
-                {children}
-              </main>
-            </div>
-          </div>
-        </Providers>
       </body>
     </html>
   );

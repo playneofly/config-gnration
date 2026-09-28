@@ -1,17 +1,13 @@
+@import url("https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Vazirmatn", "Segoe UI", Tahoma, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --color-ink: #05060b;
-  --color-panel: #0b0d17;
-  --color-line: rgba(148, 163, 184, 0.12);
-  --color-accent: #8b7cff;
-  --color-aqua: #22d3ee;
-}
-
-:root {
-  color-scheme: dark;
+  --font-sans: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+  --color-ink: #09090f;
+  --color-panel: #0e0e16;
+  --animate-pulse-slow: pulse-slow 5s ease-in-out infinite;
+  --animate-float: float 8s ease-in-out infinite;
+  --animate-spin-slow: spin 14s linear infinite;
 }
 
 html {
@@ -19,119 +15,130 @@ html {
 }
 
 body {
-  background-color: #05060b;
-  min-height: 100dvh;
-}
-
-/* بافت نویز ظریف روی کل صفحه */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  pointer-events: none;
-  opacity: 0.028;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-color: #09090f;
+  color: #e4e4e7;
+  font-feature-settings: "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: rgba(139, 124, 255, 0.35);
+  background: rgba(34, 211, 238, 0.3);
   color: #fff;
 }
 
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #2a2f45 transparent;
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+::-webkit-scrollbar-track {
+  background: #0c0c14;
 }
-*::-webkit-scrollbar-thumb {
-  background: #262b3f;
-  border-radius: 99px;
+::-webkit-scrollbar-thumb {
+  background: #26263a;
+  border-radius: 8px;
+  border: 2px solid #0c0c14;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a58;
+}
+
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.glass {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.glass-hover {
+  transition: border-color 0.25s ease, transform 0.25s ease, background 0.25s ease;
+}
+.glass-hover:hover {
+  border-color: rgba(34, 211, 238, 0.35);
+  transform: translateY(-2px);
+}
+
+.shimmer {
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0) 33%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0) 66%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 30%, transparent 75%);
+}
+
+.text-gradient {
+  background: linear-gradient(120deg, #a5f3fc 0%, #67e8f9 30%, #a78bfa 70%, #f0abfc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
+  margin: 0;
 }
 input[type="number"] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
-input[type="range"] {
-  accent-color: #8b7cff;
+.field {
+  @apply w-full rounded-xl bg-white/[0.04] border border-white/10 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20;
 }
 
-.bg-grid {
-  background-image:
-    linear-gradient(to left, rgba(148, 163, 184, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 30%, transparent 100%);
+select.field {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 0.8rem center;
+  padding-left: 2.2rem;
 }
-
-.glass {
-  background: linear-gradient(160deg, rgba(24, 27, 46, 0.55), rgba(10, 12, 22, 0.75));
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  backdrop-filter: blur(18px);
-}
-
-.glass-soft {
-  background: rgba(13, 15, 26, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  backdrop-filter: blur(12px);
-}
-
-.field-surface {
-  background: rgba(5, 7, 14, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
-}
-.field-surface:focus-within {
-  border-color: rgba(139, 124, 255, 0.55);
-  box-shadow: 0 0 0 3px rgba(139, 124, 255, 0.12);
-  background: rgba(8, 10, 20, 0.9);
-}
-
-.text-glow {
-  text-shadow: 0 0 24px rgba(139, 124, 255, 0.5);
-}
-
-@keyframes floaty {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-14px); }
-}
-.animate-floaty {
-  animation: floaty 7s ease-in-out infinite;
-}
-
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.35); }
-  70% { box-shadow: 0 0 0 12px rgba(34, 211, 238, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
-}
-.animate-pulse-ring {
-  animation: pulse-ring 2.4s ease-out infinite;
-}
-
-@keyframes shine {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
-}
-.text-shine {
-  background: linear-gradient(110deg, #e2e8f0 20%, #8b7cff 40%, #22d3ee 50%, #8b7cff 60%, #e2e8f0 80%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shine 6s linear infinite;
-}
-
-.no-scrollbar {
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+select.field option {
+  background-color: #12121c;
+  color: #e4e4e7;
 }

@@ -5,12 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function newToken(bytes = 12): string {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export function newUuid(): string {
   return crypto.randomUUID();
 }
@@ -19,22 +13,29 @@ export function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-export function randomPassword(len = 16): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let out = "";
+export function randomToken(len = 16): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
   const arr = new Uint8Array(len);
   crypto.getRandomValues(arr);
-  for (let i = 0; i < len; i++) out += chars[arr[i] % chars.length];
-  return out;
+  return Array.from(arr, (b) => alphabet[b % alphabet.length]).join("");
 }
 
-export function fmtDate(input: string | Date): string {
-  try {
-    return new Intl.DateTimeFormat("fa-IR", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(input));
-  } catch {
-    return String(input);
-  }
+const faDigits = new Intl.NumberFormat("fa-IR");
+export function faNum(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  return faDigits.format(n);
+}
+
+export function timeAgoFa(iso: string | Date | null | undefined): string {
+  if (!iso) return "—";
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  const diff = Date.now() - d.getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "همین الان";
+  if (min < 60) return `${faNum(min)} دقیقه پیش`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${faNum(h)} ساعت پیش`;
+  const days = Math.floor(h / 24);
+  if (days < 30) return `${faNum(days)} روز پیش`;
+  return d.toLocaleDateString("fa-IR");
 }

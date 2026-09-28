@@ -1,277 +1,284 @@
 "use client";
 
-import { animate, motion } from "framer-motion";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { motion } from "framer-motion";
 import {
   Activity,
-  ArrowLeft,
-  Boxes,
-  Clapperboard,
-  Globe2,
-  PlusCircle,
-  Rss,
-  Server,
+  Database,
+  Gauge,
+  Layers,
+  RefreshCw,
+  Radio,
+  ShieldCheck,
+  SignalHigh,
   Zap,
 } from "lucide-react";
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import {
-  Button,
-  ProBadge,
-  Spinner,
-} from "@/components/primitives";
-import QuickAutoCreate from "@/components/quick-auto";
-import { PROTOCOL_META } from "@/lib/constants";
+import { PageHeader, ProtocolBadge } from "@/components/shared";
+import { faNum, timeAgoFa, cn } from "@/lib/utils";
 import type { Protocol } from "@/lib/types";
-import { fmtDate } from "@/lib/utils";
 
 interface Stats {
   total: number;
-  active: number;
-  subs: number;
-  distinctHosts: number;
-  byProtocol: Record<string, number>;
-  recent: {
+  alive: number;
+  dead: number;
+  unknown: number;
+  enabled: number;
+  avgLatency: number;
+  byProtocol: { protocol: string; value: number }[];
+  recentRuns: {
     id: number;
-    name: string;
-    protocol: string;
-    host: string;
-    port: number;
-    enabled: boolean;
+    inserted: number;
+    duplicates: number;
+    tested: number;
+    aliveCount: number;
+    sourcesOk: number;
+    sourcesTotal: number;
     createdAt: string;
   }[];
+  lastTestedAt: string | null;
 }
-
-function AnimatedNumber({ value }: { value: number }) {
-  const [display, setDisplay] = useState(0);
-  const prev = useRef(0);
-  useEffect(() => {
-    const controls = animate(prev.current, value, {
-      duration: 1.1,
-      ease: [0.22, 1, 0.36, 1],
-      onUpdate: (v) => setDisplay(Math.round(v)),
-    });
-    prev.current = value;
-    return () => controls.stop();
-  }, [value]);
-  return <span>{display.toLocaleString("fa-IR")}</span>;
-}
-
-const stagger = {
-  hidden: { opacity: 0, y: 18 },
-  show: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: 0.07 * i, duration: 0.5, ease: [0.22, 1, 0.36, 1] as const },
-  }),
-};
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch("/api/stats")
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setStats)
-      .catch(() => setStats(null));
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/stats", { cache: "no-store" });
+      if (res.ok) setStats(await res.json());
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const totalForShare = Math.max(stats?.total ?? 0, 1);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const total = stats?.total ?? 0;
+  const alivePct = total ? Math.round(((stats?.alive ?? 0) / total) * 100) : 0;
 
   return (
     <div>
-      {/* هیرو */}
-      <motion.section
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="glass relative overflow-hidden rounded-[2rem] px-6 py-10 sm:px-10 sm:py-14"
-      >
-        <div className="absolute -left-20 -top-28 size-72 rounded-full bg-violet-600/25 blur-[110px]" />
-        <div className="absolute -bottom-32 right-1/4 size-64 rounded-full bg-cyan-500/15 blur-[100px]" />
-        <div className="relative">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3.5 py-1.5 text-[11px] font-bold text-violet-200 ring-1 ring-violet-400/25">
-            <Zap className="size-3.5 text-cyan-300" />
-            ساخت نامحدود کانفیگ — بدون سقف، بدون محدودیت
-          </span>
-          <h1 className="mt-5 max-w-2xl text-3xl font-black leading-[1.25] tracking-tight text-white sm:text-5xl sm:leading-[1.2]">
-            کارخانه ساخت
-            <span className="text-shine"> کانفیگ</span>
-            <br />
-            با یک کلیک، صدها کانفیگ
-          </h1>
-          <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-400 sm:text-base">
-            VLESS، VMess، Trojan، Shadowsocks و WireGuard را با ترنسپورت‌های WS،
-            gRPC و Reality بسازید؛ همه را در یک لینک اشتراک واحد با خروجی
-            v2ray، sing-box و Clash تحویل بگیرید.
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            <Link href="/configs/new">
-              <Button>
-                <PlusCircle className="size-4" />
-                ساخت کانفیگ جدید
-              </Button>
+      <PageHeader
+        title="داشبورد"
+        desc="نمای زنده از مخزن کانفیگ‌های واقعی — هر کانفیگ از منابع عمومی به‌روز جمع‌آوری و با اتصال TCP واقعی آزمایش می‌شود."
+        actions={
+          <>
+            <button
+              onClick={load}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-zinc-200 ring-1 ring-white/10 transition hover:bg-white/[0.1]"
+            >
+              <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+              به‌روزرسانی
+            </button>
+            <Link
+              href="/bulk"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-l from-cyan-400 to-violet-500 px-5 py-2.5 text-sm font-bold text-zinc-950 shadow-[0_0_30px_rgba(34,211,238,0.35)] transition hover:brightness-110"
+            >
+              <Layers className="size-4" strokeWidth={2.5} />
+              ساخت دسته‌ای جدید
             </Link>
-            <Link href="/bulk">
-              <Button variant="soft">
-                <Zap className="size-4" />
-                ساخت انبوه (تا ۱,۰۰۰,۰۰۰ تایی)
-              </Button>
-            </Link>
-            <Link href="/subs">
-              <Button variant="ghost">
-                <Rss className="size-4" />
-                دریافت لینک اشتراک
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </motion.section>
+          </>
+        }
+      />
 
-      {/* ساخت خودکار با یک کلیک */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-        className="mt-6"
-      >
-        <QuickAutoCreate />
-      </motion.div>
+      {/* کارت‌های آمار */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatCard
+          icon={<Database className="size-5" />}
+          tone="cyan"
+          label="کل کانفیگ‌ها"
+          value={stats ? faNum(stats.total) : "…"}
+          foot={`${stats ? faNum(stats.enabled) : "…"} فعال`}
+        />
+        <StatCard
+          icon={<ShieldCheck className="size-5" />}
+          tone="emerald"
+          label="سالم و آماده"
+          value={stats ? faNum(stats.alive) : "…"}
+          foot={total ? `${faNum(alivePct)}٪ از کل مخزن` : "—"}
+        />
+        <StatCard
+          icon={<SignalHigh className="size-5" />}
+          tone="violet"
+          label="میانگین پینگ"
+          value={stats && stats.avgLatency ? `${faNum(stats.avgLatency)}ms` : "—"}
+          foot={stats?.lastTestedAt ? `آخرین تست: ${timeAgoFa(stats.lastTestedAt)}` : "هنوز تستی نشده"}
+        />
+        <StatCard
+          icon={<Activity className="size-5" />}
+          tone="rose"
+          label="قطع / تست‌نشده"
+          value={stats ? faNum(stats.dead) : "…"}
+          foot={`${stats ? faNum(stats.unknown) : "…"} در صف تست`}
+        />
+      </div>
 
-      {/* آمار */}
-      <section className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {[
-          { label: "کل کانفیگ‌ها", value: stats?.total, icon: Boxes, tone: "text-violet-300 bg-violet-500/10 ring-violet-400/20" },
-          { label: "کانفیگ‌های فعال", value: stats?.active, icon: Activity, tone: "text-emerald-300 bg-emerald-500/10 ring-emerald-400/20" },
-          { label: "سرورهای یکتا", value: stats?.distinctHosts, icon: Globe2, tone: "text-cyan-300 bg-cyan-500/10 ring-cyan-400/20" },
-          { label: "لینک‌های اشتراک", value: stats?.subs, icon: Rss, tone: "text-amber-300 bg-amber-500/10 ring-amber-400/20" },
-        ].map((s, i) => (
-          <motion.div
-            key={s.label}
-            custom={i + 1}
-            variants={stagger}
-            initial="hidden"
-            animate="show"
-            className="glass rounded-3xl p-5"
-          >
-            <div className={`grid size-10 place-items-center rounded-xl ring-1 ${s.tone}`}>
-              <s.icon className="size-5" />
-            </div>
-            <p className="mt-4 text-3xl font-black tracking-tight text-white">
-              {s.value === undefined ? "—" : <AnimatedNumber value={s.value} />}
-            </p>
-            <p className="mt-1 text-xs font-medium text-slate-400">{s.label}</p>
-          </motion.div>
-        ))}
-      </section>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-5">
+      <div className="mt-6 grid gap-4 lg:grid-cols-5">
         {/* توزیع پروتکل‌ها */}
-        <motion.div
-          custom={5}
-          variants={stagger}
-          initial="hidden"
-          animate="show"
-          className="glass rounded-3xl p-6 lg:col-span-2"
-        >
-          <h2 className="flex items-center gap-2 text-base font-extrabold text-white">
-            <Clapperboard className="size-4.5 text-violet-300" />
-            توزیع پروتکل‌ها
-          </h2>
-          {!stats ? (
-            <Spinner />
-          ) : (
-            <div className="mt-5 space-y-4">
-              {(Object.keys(PROTOCOL_META) as Protocol[]).map((p) => {
-                const n = stats.byProtocol[p] ?? 0;
-                const pct = Math.round((n / totalForShare) * 100);
-                return (
-                  <div key={p}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 font-bold text-slate-300">
-                        <span className={`size-2 rounded-full ${PROTOCOL_META[p].dot}`} />
-                        {PROTOCOL_META[p].label}
-                      </span>
-                      <span className="font-mono text-slate-500">
-                        {n.toLocaleString("fa-IR")} · {pct.toLocaleString("fa-IR")}٪
-                      </span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-white/[0.05]">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${pct}%` }}
-                        transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
-                        className={`h-full rounded-full ${PROTOCOL_META[p].dot} opacity-80`}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              <Link
-                href="/configs"
-                className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-white/[0.04] py-2.5 text-xs font-bold text-slate-300 ring-1 ring-white/10 transition-colors hover:bg-white/[0.08] hover:text-white"
-              >
-                مشاهده همه کانفیگ‌ها
-                <ArrowLeft className="size-3.5" />
-              </Link>
-            </div>
-          )}
-        </motion.div>
-
-        {/* آخرین کانفیگ‌ها */}
-        <motion.div
-          custom={6}
-          variants={stagger}
-          initial="hidden"
-          animate="show"
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
           className="glass rounded-3xl p-6 lg:col-span-3"
         >
-          <h2 className="flex items-center gap-2 text-base font-extrabold text-white">
-            <Server className="size-4.5 text-cyan-300" />
-            آخرین کانفیگ‌های ساخته‌شده
-          </h2>
-          {!stats ? (
-            <Spinner />
-          ) : stats.recent.length === 0 ? (
-            <div className="flex flex-col items-center py-12 text-center">
-              <p className="text-sm text-slate-400">
-                هنوز کانفیگی نساخته‌اید — همین حالا شروع کنید.
-              </p>
-              <Link href="/configs/new" className="mt-4">
-                <Button>
-                  <PlusCircle className="size-4" />
-                  اولین کانفیگ
-                </Button>
-              </Link>
-            </div>
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-base font-bold text-white">
+              <Gauge className="size-4 text-cyan-300" />
+              توزیع پروتکل‌ها
+            </h2>
+            <Link href="/configs" className="text-xs font-semibold text-cyan-300 hover:text-cyan-200">
+              مشاهده همه ←
+            </Link>
+          </div>
+          {stats && stats.byProtocol.length > 0 ? (
+            <ul className="space-y-3.5">
+              {stats.byProtocol
+                .sort((a, b) => b.value - a.value)
+                .map((p) => {
+                  const pct = total ? (p.value / total) * 100 : 0;
+                  return (
+                    <li key={p.protocol}>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <ProtocolBadge protocol={p.protocol as Protocol} />
+                        <span className="num text-xs font-bold text-zinc-300">
+                          {faNum(p.value)}
+                          <span className="mr-1.5 text-zinc-600">({faNum(Math.round(pct))}٪)</span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                          className="h-full rounded-full bg-gradient-to-l from-cyan-400 to-violet-500"
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
           ) : (
-            <ul className="mt-4 divide-y divide-white/[0.05]">
-              {stats.recent.map((c) => (
-                <li key={c.id} className="flex items-center gap-3 py-3">
-                  <ProBadge protocol={c.protocol} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-slate-200">{c.name}</p>
-                    <p dir="ltr" className="truncate text-left font-mono text-[11px] text-slate-500">
-                      {c.host}:{c.port}
-                    </p>
-                  </div>
-                  <div className="text-left">
-                    <span
-                      className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                        c.enabled
-                          ? "bg-emerald-400/10 text-emerald-300"
-                          : "bg-slate-500/10 text-slate-500"
-                      }`}
-                    >
-                      {c.enabled ? "فعال" : "غیرفعال"}
+            <EmptyNote
+              text={loading ? "در حال بارگذاری…" : "هنوز هیچ کانفیگی در مخزن نیست. یک ساخت دسته‌ای اجرا کنید."}
+            />
+          )}
+        </motion.section>
+
+        {/* آخرین همگام‌سازی‌ها */}
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="glass rounded-3xl p-6 lg:col-span-2"
+        >
+          <h2 className="mb-5 flex items-center gap-2 text-base font-bold text-white">
+            <RefreshCw className="size-4 text-violet-300" />
+            آخرین ساخت‌های دسته‌ای
+          </h2>
+          {stats && stats.recentRuns.length > 0 ? (
+            <ul className="space-y-3">
+              {stats.recentRuns.map((r) => (
+                <li
+                  key={r.id}
+                  className="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="num text-sm font-extrabold text-emerald-300">
+                      +{faNum(r.inserted)}
+                      <span className="mr-1 text-[11px] font-medium text-zinc-500">جدید</span>
                     </span>
-                    <p className="mt-1 text-[10px] text-slate-600">{fmtDate(c.createdAt)}</p>
+                    <span className="text-[11px] text-zinc-500">{timeAgoFa(r.createdAt)}</span>
+                  </div>
+                  <div className="num mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-400">
+                    <span>تست‌شده: {faNum(r.tested)}</span>
+                    <span className="text-emerald-400/80">سالم: {faNum(r.aliveCount)}</span>
+                    <span>
+                      منابع: {faNum(r.sourcesOk)}/{faNum(r.sourcesTotal)}
+                    </span>
                   </div>
                 </li>
               ))}
             </ul>
+          ) : (
+            <EmptyNote text={loading ? "در حال بارگذاری…" : "هنوز همگام‌سازی انجام نشده است."} />
           )}
-        </motion.div>
+        </motion.section>
       </div>
+
+      {/* اکشن‌های سریع */}
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <Link
+          href="/generate"
+          className="glass glass-hover group relative overflow-hidden rounded-3xl p-6"
+        >
+          <div className="absolute -left-10 -top-10 size-40 rounded-full bg-cyan-500/10 blur-3xl transition group-hover:bg-cyan-500/20" />
+          <Zap className="mb-4 size-7 text-cyan-300" />
+          <h3 className="text-lg font-extrabold text-white">ساخت تکی</h3>
+          <p className="mt-1.5 text-[13px] leading-6 text-zinc-400">
+            یک کانفیگ واقعیِ تست‌شده و آماده اتصال، همراه QR — یا ساخت دستی با سرور خودتان.
+          </p>
+        </Link>
+        <Link href="/subs" className="glass glass-hover group relative overflow-hidden rounded-3xl p-6">
+          <div className="absolute -left-10 -top-10 size-40 rounded-full bg-violet-500/10 blur-3xl transition group-hover:bg-violet-500/20" />
+          <Radio className="mb-4 size-7 text-violet-300" />
+          <h3 className="text-lg font-extrabold text-white">لینک اشتراک</h3>
+          <p className="mt-1.5 text-[13px] leading-6 text-zinc-400">
+            یک لینک سابسکریپشن بسازید تا کلاینت شما همیشه جدیدترین کانفیگ‌های سالم را دریافت کند.
+          </p>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+const TONES: Record<string, string> = {
+  cyan: "from-cyan-400/15 to-cyan-400/0 text-cyan-300",
+  emerald: "from-emerald-400/15 to-emerald-400/0 text-emerald-300",
+  violet: "from-violet-400/15 to-violet-400/0 text-violet-300",
+  rose: "from-rose-400/15 to-rose-400/0 text-rose-300",
+};
+
+function StatCard({
+  icon,
+  tone,
+  label,
+  value,
+  foot,
+}: {
+  icon: React.ReactNode;
+  tone: keyof typeof TONES;
+  label: string;
+  value: string;
+  foot: string;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="glass glass-hover relative overflow-hidden rounded-3xl p-5"
+    >
+      <div className={cn("absolute inset-x-0 top-0 h-20 bg-gradient-to-b", TONES[tone])} />
+      <div className="relative">
+        <div className={cn("mb-4 inline-flex rounded-xl bg-white/[0.06] p-2.5 ring-1 ring-white/10", TONES[tone])}>
+          {icon}
+        </div>
+        <p className="text-xs font-medium text-zinc-400">{label}</p>
+        <p className="num mt-1 text-2xl font-black text-white sm:text-3xl">{value}</p>
+        <p className="mt-1.5 text-[11px] text-zinc-500">{foot}</p>
+      </div>
+    </motion.div>
+  );
+}
+
+function EmptyNote({ text }: { text: string }) {
+  return (
+    <div className="grid place-items-center rounded-2xl border border-dashed border-white/10 py-10 text-center">
+      <p className="px-4 text-xs leading-6 text-zinc-500">{text}</p>
     </div>
   );
 }

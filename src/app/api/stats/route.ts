@@ -1,66 +1,59 @@
 import { NextResponse } from "next/server";
-import { count, desc, eq, sql } from "drizzle-orm";
+import { count, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { configs, subscriptions } from "@/db/schema";
-import { PROTOCOL_LIST } from "@/lib/constants";
+import { configs } from "@/db/schema";
+import { getRecentSyncRuns } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const [total] = await db.select({ value: count() }).from(configs);
-    const [active] = await db
-      .select({ value: count() })
-      .from(configs)
-      .where(eq(configs.enabled, true));
-    const [subs] = await db.select({ value: count() }).from(subscriptions);
-    const perProtocol = await db
-      .select({
-        protocol: configs.protocol,
-        value: count(),
-      })
-      .from(configs)
-      .groupBy(configs.protocol);
-    const recent = await db
-      .select()
-      .from(configs)
-      .orderBy(desc(configs.id))
-      .limit(6);
-
-    const byProtocol = Object.fromEntries(
-      PROTOCOL_LIST.map((p) => [
-        p,
-        perProtocol.find((r) => r.protocol === p)?.value ?? 0,
-      ])
-    );
-
-    const [appearance] = await db
-      .select({
-        hosts: sql<number>`count(distinct ${configs.host})`,
-        ports: sql<number>`count(distinct ${configs.port})`,
-      })
-      .from(configs);
+    const [totals, byProtocol, recentRuns, lastTested] = await Promise.all([
+      db
+        .select({
+          total: count(),
+          alive: sql<number>`count(*) filter (where ${configs.alive} = true)`,
+          dead: sql<number>`count(*) filter (where ${configs.alive} = false)`,
+          unknown: sql<number>`count(*) filter (where ${configs.alive} is null)`,
+          enabled: sql<number>`count(*) filter (where ${configs.enabled} = true)`,
+          avgLatency: sql<number>`coalesce(round(avg(${configs.latency}) filter (where ${configs.alive} = true)), 0)`,
+        })
+        .from(configs),
+      db
+        .select({ protocol: configs.protocol, value: count() })
+        .from(configs)
+        .groupBy(configs.protocol),
+      getRecentSyncRuns(5),
+      db
+        .select({ t: configs.lastTestedAt })
+        .from(configs)
+        .where(isNotNull(configs.lastTestedAt))
+        .orderBy(sql`${configs.lastTestedAt} desc`)
+        .limit(1),
+    ]);
 
     return NextResponse.json({
-      total: total.value,
-      active: active.value,
-      subs: subs.value,
-      byProtocol,
-      distinctHosts: Number(appearance?.hosts ?? 0),
-      recent: recent.map((r) => ({
+      total: totals[0]?.total ?? 0,
+      alive: Number(totals[0]?.alive ?? 0),
+      dead: Number(totals[0]?.dead ?? 0),
+      unknown: Number(totals[0]?.unknown ?? 0),
+      enabled: Number(totals[0]?.enabled ?? 0),
+      avgLatency: Number(totals[0]?.avgLatency ?? 0),
+      byProtocol: byProtocol.map((r) => ({ protocol: r.protocol, value: r.value })),
+      recentRuns: recentRuns.map((r) => ({
         id: r.id,
-        name: r.name,
-        protocol: r.protocol,
-        host: r.host,
-        port: r.port,
-        enabled: r.enabled,
-        createdAt: new Date(r.createdAt).toISOString(),
+        inserted: r.inserted,
+        duplicates: r.duplicates,
+        tested: r.tested,
+        aliveCount: r.aliveCount,
+        sourcesOk: r.sourcesOk,
+        sourcesTotal: r.sourcesTotal,
+        createdAt: r.createdAt.toISOString(),
       })),
+      lastTestedAt: lastTested[0]?.t?.toISOString() ?? null,
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: "خطا در دریافت آمار", detail: String(e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "خطا در آمار", detail: String(e) }, { status: 500 });
   }
 }

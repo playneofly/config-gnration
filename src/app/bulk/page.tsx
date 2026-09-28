@@ -1,590 +1,182 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
-  Copy,
-  Download,
-  ListChecks,
+  Database,
+  Globe,
+  Layers,
   Loader2,
-  Wand2,
-  Zap,
+  Radio,
+  ShieldCheck,
+  Timer,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useRef, useState } from "react";
-import { useToast } from "@/components/providers";
-import {
-  Button,
-  copyText,
-  Field,
-  MonoBox,
-  PageHeader,
-  Segmented,
-  Select,
-  TextArea,
-  TextInput,
-} from "@/components/primitives";
-import {
-  CLEAN_HOSTS_PRESET,
-  POPULAR_PORTS,
-  PROTOCOL_LIST,
-  PROTOCOL_META,
-  SECURITY_META,
-  SS_CIPHERS,
-  TRANSPORT_META,
-} from "@/lib/constants";
-import type { Protocol, Security, Transport } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/shared";
+import { cn, faNum } from "@/lib/utils";
+import type { SyncReport } from "@/lib/types";
 
-type HostMode = "fixed" | "rotate";
-type PortMode = "fixed" | "range" | "pool";
-type ProtocolChoice = Protocol | "mixed";
-type AutoMode = "auto" | "manual";
-
-const MAX_TOTAL = 1_000_000;
-const CHUNK = 25_000;
-const QUICK_COUNTS = [100, 1_000, 10_000, 100_000, 1_000_000];
-
-interface BulkResult {
-  created: number;
-  shares: string[];
-}
-
-const faNum = (n: number) => n.toLocaleString("fa-IR");
+const COUNTS = [100, 250, 500, 1000, 2500, 5000];
 
 export default function BulkPage() {
-  const { push } = useToast();
-  const [prefix, setPrefix] = useState("NEON");
-  const [countStr, setCountStr] = useState("100");
-  const [protocol, setProtocol] = useState<ProtocolChoice>("vless");
-  const [hostMode, setHostMode] = useState<HostMode>("rotate");
-  const [fixedHost, setFixedHost] = useState("");
-  const [hostsText, setHostsText] = useState(CLEAN_HOSTS_PRESET.join("\n"));
-  const [portMode, setPortMode] = useState<PortMode>("fixed");
-  const [port, setPort] = useState("443");
-  const [portMin, setPortMin] = useState("1024");
-  const [portMax, setPortMax] = useState("65000");
-  const [portPool, setPortPool] = useState<number[]>([443, 8443, 2096, 2087]);
-  const [security, setSecurity] = useState<Security>("tls");
-  const [transport, setTransport] = useState<Transport>("ws");
-  const [sniMode, setSniMode] = useState<AutoMode>("auto");
-  const [pathMode, setPathMode] = useState<AutoMode>("auto");
-  const [sni, setSni] = useState("");
-  const [path, setPath] = useState("/");
-  const [hostHeader, setHostHeader] = useState("");
-  const [method, setMethod] = useState(SS_CIPHERS[2]);
+  const [count, setCount] = useState(500);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
-  const [result, setResult] = useState<BulkResult | null>(null);
-  const abortRef = useRef(false);
+  const [report, setReport] = useState<SyncReport | null>(null);
+  const [error, setError] = useState("");
 
-  const count = Math.min(
-    MAX_TOTAL,
-    Math.max(1, Number(countStr.replace(/[^0-9]/g, "")) || 1)
-  );
-  const hasTls =
-    protocol !== "shadowsocks" && protocol !== "wireguard" && protocol !== "mixed";
-  const hosts = hostsText.split(/\r?\n/).map((h) => h.trim()).filter(Boolean);
-
-  function togglePoolPort(p: number) {
-    setPortPool((prev) =>
-      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
-    );
-  }
-
-  async function generate() {
-    if (!prefix.trim()) return push("پیشوند نام الزامی است", "error");
-    if (hostMode === "fixed" && !fixedHost.trim())
-      return push("آدرس سرور را وارد کنید", "error");
-    if (hostMode === "rotate" && !hosts.length)
-      return push("حداقل یک سرور در فهرست چرخش وارد کنید", "error");
-
+  const run = async () => {
     setBusy(true);
-    setResult(null);
-    abortRef.current = false;
-    setProgress({ done: 0, total: count });
-
-    const allShares: string[] = [];
-    let created = 0;
-
+    setError("");
+    setReport(null);
     try {
-      let remaining = count;
-      let startIndex = 0;
-      while (remaining > 0) {
-        if (abortRef.current) throw new Error("عملیات توسط شما متوقف شد");
-        const n = Math.min(CHUNK, remaining);
-        const res = await fetch("/api/configs/bulk", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prefix: prefix.trim(),
-            count: n,
-            startIndex,
-            totalPlanned: count,
-            protocol,
-            hostMode,
-            hosts: hostMode === "fixed" ? [fixedHost.trim()] : hosts,
-            portMode,
-            port: Number(port) || 443,
-            portMin: Number(portMin) || 1,
-            portMax: Number(portMax) || 65535,
-            portPool,
-            security:
-              protocol === "shadowsocks" || protocol === "wireguard"
-                ? "none"
-                : security,
-            transport,
-            sni: sniMode === "auto" ? "@auto" : sni || undefined,
-            hostHeader: hostHeader || undefined,
-            path: pathMode === "auto" ? "@auto" : path || "/",
-            method: protocol === "shadowsocks" ? method : undefined,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "خطای سرور");
-        created += data.created;
-        if (Array.isArray(data.shares)) allShares.push(...data.shares);
-        setProgress({ done: created, total: count });
-        remaining -= n;
-        startIndex += n;
-      }
-      setResult({ created, shares: allShares });
-      push(`${faNum(created)} کانفیگ با موفقیت ساخته شد`);
+      const res = await fetch("/api/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ count, test: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.detail || "خطا در ساخت دسته‌ای");
+      setReport(data.report);
     } catch (e) {
-      push(e instanceof Error ? e.message : "خطا در ساخت انبوه", "error");
-      if (created > 0) setResult({ created, shares: allShares });
+      setError(e instanceof Error ? e.message : "خطای ناشناخته");
     } finally {
       setBusy(false);
-      setProgress({ done: 0, total: 0 });
     }
-  }
-
-  const pct =
-    progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+  };
 
   return (
-    <div>
+    <div className="mx-auto max-w-4xl">
       <PageHeader
-        title="ساخت انبوه کانفیگ"
-        desc="تا ۱,۰۰۰,۰۰۰ کانفیگ در هر بار — همه‌چیز خودکار: UUID و رمز تصادفی، چرخش سرورها، SNI و Path تصادفی. بدون هیچ تنظیمی، دکمه را بزنید."
+        title="ساخت دسته‌ای"
+        desc="جمع‌آوری کانفیگ‌های واقعی از منابع عمومیِ به‌روز، حذف تکراری‌ها و تست اتصال واقعی. دیگر خبری از UUID تصادفیِ الکی نیست."
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* الگو */}
-        <div className="glass rounded-3xl p-5 sm:p-6">
-          <h3 className="mb-5 flex items-center gap-2 text-sm font-extrabold text-white">
-            <Wand2 className="size-4 text-violet-300" />
-            الگوی تولید
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="پیشوند نام">
-              <TextInput
-                dir="ltr"
-                value={prefix}
-                onChange={(e) => setPrefix(e.target.value)}
-                className="text-left font-mono"
-              />
-            </Field>
-            <Field label="پروتکل">
-              <Select
-                value={protocol}
-                onChange={(e) => setProtocol(e.target.value as ProtocolChoice)}
-              >
-                <option value="mixed">مخلوط (چرخشی بین همه)</option>
-                {PROTOCOL_LIST.map((p) => (
-                  <option key={p} value={p}>
-                    {PROTOCOL_META[p].label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-
-          {/* تعداد */}
-          <div className="mt-5">
-            <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-slate-300">
-              <span>تعداد کانفیگ</span>
-              <TextInput
-                dir="ltr"
-                inputMode="numeric"
-                value={countStr}
-                onChange={(e) => setCountStr(e.target.value)}
-                onBlur={() => setCountStr(String(count))}
-                className="w-32 py-1.5 text-center font-mono text-xs"
-              />
-            </div>
-            <div className="grid grid-cols-5 gap-1.5">
-              {QUICK_COUNTS.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setCountStr(String(n))}
-                  className={cn(
-                    "rounded-xl px-1 py-2 text-[11px] font-extrabold transition-all",
-                    count === n
-                      ? "bg-gradient-to-l from-violet-500 to-indigo-500 text-white shadow-lg"
-                      : "bg-white/[0.04] text-slate-400 ring-1 ring-white/10 hover:text-white"
-                  )}
-                >
-                  {faNum(n)}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
-              حجم‌های بالای {faNum(CHUNK)} به‌صورت خودکار به چند دسته تقسیم و با
-              نوار پیشرفت ساخته می‌شوند — سقف: {faNum(MAX_TOTAL)} کانفیگ.
-            </p>
-          </div>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            {hasTls && (
-              <Field label="امنیت">
-                <Segmented<Security>
-                  value={security}
-                  onChange={setSecurity}
-                  options={(["tls", "none"] as Security[]).map((s) => ({
-                    value: s,
-                    label: SECURITY_META[s].label,
-                  }))}
-                />
-              </Field>
-            )}
-            {protocol !== "shadowsocks" && protocol !== "wireguard" && (
-              <Field label="ترنسپورت">
-                <Segmented<Transport>
-                  value={transport}
-                  onChange={setTransport}
-                  options={(["ws", "tcp", "grpc", "httpupgrade"] as Transport[]).map(
-                    (t) => ({ value: t, label: TRANSPORT_META[t].label })
-                  )}
-                />
-              </Field>
-            )}
-            {protocol === "shadowsocks" && (
-              <Field label="رمزنگاری" className="sm:col-span-2">
-                <Select value={method} onChange={(e) => setMethod(e.target.value)}>
-                  {SS_CIPHERS.map((m) => (
-                    <option key={m} dir="ltr">
-                      {m}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            )}
-            {protocol !== "wireguard" && (
-              <>
-                <Field label="SNI">
-                  <Segmented<AutoMode>
-                    value={sniMode}
-                    onChange={setSniMode}
-                    options={[
-                      { value: "auto", label: "خودکار (تصادفی)" },
-                      { value: "manual", label: "دستی" },
-                    ]}
-                  />
-                  {sniMode === "manual" && (
-                    <TextInput
-                      dir="ltr"
-                      value={sni}
-                      onChange={(e) => setSni(e.target.value)}
-                      placeholder="speedtest.net"
-                      className="mt-2 text-left font-mono text-xs"
-                    />
-                  )}
-                </Field>
-                <Field label="Path">
-                  <Segmented<AutoMode>
-                    value={pathMode}
-                    onChange={setPathMode}
-                    options={[
-                      { value: "auto", label: "خودکار (تصادفی)" },
-                      { value: "manual", label: "دستی" },
-                    ]}
-                  />
-                  {pathMode === "manual" && (
-                    <TextInput
-                      dir="ltr"
-                      value={path}
-                      onChange={(e) => setPath(e.target.value)}
-                      className="mt-2 text-left font-mono text-xs"
-                    />
-                  )}
-                </Field>
-                {(transport === "ws" || transport === "httpupgrade") &&
-                  pathMode === "manual" && (
-                    <Field label="هدر Host" optional>
-                      <TextInput
-                        dir="ltr"
-                        value={hostHeader}
-                        onChange={(e) => setHostHeader(e.target.value)}
-                        className="text-left font-mono text-xs"
-                      />
-                    </Field>
-                  )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* سرورها و پورت‌ها */}
-        <div className="glass rounded-3xl p-5 sm:p-6">
-          <h3 className="mb-5 flex items-center gap-2 text-sm font-extrabold text-white">
-            <ListChecks className="size-4 text-cyan-300" />
-            سرورها و پورت‌ها
-          </h3>
-
-          <Field label="حالت سرور">
-            <Segmented<HostMode>
-              value={hostMode}
-              onChange={setHostMode}
-              options={[
-                { value: "rotate", label: "چرخش بین IP تمیز (پیش‌فرض)" },
-                { value: "fixed", label: "سرور ثابت" },
-              ]}
-            />
-          </Field>
-
-          {hostMode === "fixed" ? (
-            <Field label="آدرس سرور" className="mt-4">
-              <TextInput
-                dir="ltr"
-                value={fixedHost}
-                onChange={(e) => setFixedHost(e.target.value)}
-                placeholder="104.16.1.1"
-                className="text-left font-mono"
-              />
-            </Field>
-          ) : (
-            <div className="mt-4">
-              <Field
-                label={`فهرست سرورها (${faNum(hosts.length)} مورد)`}
-                hint="در هر خط یک IP یا دامنه — کانفیگ‌ها به‌نوبت بین آن‌ها پخش می‌شوند"
-              >
-                <TextArea
-                  dir="ltr"
-                  rows={7}
-                  value={hostsText}
-                  onChange={(e) => setHostsText(e.target.value)}
-                  className="text-left font-mono text-xs leading-6"
-                />
-              </Field>
-              <Button
-                variant="ghost"
-                className="mt-2 w-full py-2 text-xs"
-                onClick={() => setHostsText(CLEAN_HOSTS_PRESET.join("\n"))}
-              >
-                <Zap className="size-3.5" />
-                بازنشانی با IPهای پرکاربرد کلادفلر
-              </Button>
-            </div>
-          )}
-
-          <div className="mt-5 border-t border-white/[0.07] pt-5">
-            <Field label="حالت پورت">
-              <Segmented<PortMode>
-                value={portMode}
-                onChange={setPortMode}
-                options={[
-                  { value: "fixed", label: "ثابت" },
-                  { value: "range", label: "بازه تصادفی" },
-                  { value: "pool", label: "استخر TLS" },
-                ]}
-              />
-            </Field>
-            {portMode === "fixed" && (
-              <Field label="پورت" className="mt-4">
-                <TextInput
-                  dir="ltr"
-                  inputMode="numeric"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ""))}
-                  className="text-left font-mono"
-                />
-              </Field>
-            )}
-            {portMode === "range" && (
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <Field label="از پورت">
-                  <TextInput
-                    dir="ltr"
-                    inputMode="numeric"
-                    value={portMin}
-                    onChange={(e) => setPortMin(e.target.value.replace(/[^0-9]/g, ""))}
-                    className="text-left font-mono"
-                  />
-                </Field>
-                <Field label="تا پورت">
-                  <TextInput
-                    dir="ltr"
-                    inputMode="numeric"
-                    value={portMax}
-                    onChange={(e) => setPortMax(e.target.value.replace(/[^0-9]/g, ""))}
-                    className="text-left font-mono"
-                  />
-                </Field>
-              </div>
-            )}
-            {portMode === "pool" && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {POPULAR_PORTS.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => togglePoolPort(p)}
-                    className={cn(
-                      "rounded-xl px-3.5 py-2 font-mono text-xs font-bold transition-all",
-                      portPool.includes(p)
-                        ? "bg-gradient-to-l from-violet-500 to-indigo-500 text-white shadow-lg"
-                        : "bg-white/[0.04] text-slate-400 ring-1 ring-white/10 hover:text-white"
-                    )}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* خلاصه */}
-          <div className="glass-soft mt-5 rounded-2xl p-4 text-[11px] leading-relaxed text-slate-400">
-            <span className="text-base font-black text-white">{faNum(count)} کانفیگ</span>{" "}
-            {protocol === "mixed" ? "مخلوط" : PROTOCOL_META[protocol as Protocol]?.label}
-            {hostMode === "rotate" && hosts.length > 0 && (
-              <>
-                {" "}
-                روی <span className="font-bold text-cyan-300">{faNum(hosts.length)} سرور</span>
-              </>
-            )}{" "}
-            با SNI و Path تصادفی (در حالت خودکار) ساخته می‌شود.
-          </div>
-        </div>
-      </div>
-
-      {/* اکشن + پیشرفت */}
-      <div className="glass mt-6 rounded-3xl p-5 sm:p-6">
-        <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-          <p className="text-center text-xs leading-relaxed text-slate-400 sm:text-right">
-            {busy
-              ? "دسته‌ها پشت سر هم ساخته و ذخیره می‌شوند…"
-              : "بدون نیاز به هیچ تنظیمی — فقط دکمه تولید را بزنید."}
-          </p>
-          <div className="flex w-full shrink-0 gap-2 sm:w-auto">
-            {busy && (
-              <Button variant="danger" onClick={() => (abortRef.current = true)}>
-                توقف
-              </Button>
-            )}
-            <Button onClick={generate} disabled={busy}>
-              {busy ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Zap className="size-4" />
+      <div className="glass rounded-3xl p-6 sm:p-8">
+        <p className="mb-3 text-xs font-bold text-zinc-400">چند کانفیگ جدید وارد مخزن شود؟</p>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {COUNTS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCount(c)}
+              disabled={busy}
+              className={cn(
+                "num cursor-pointer rounded-2xl border py-3.5 text-sm font-extrabold transition-all",
+                count === c
+                  ? "border-cyan-400/50 bg-cyan-400/[0.1] text-cyan-300 shadow-[0_0_24px_rgba(34,211,238,0.18)]"
+                  : "border-white/[0.07] bg-white/[0.02] text-zinc-400 hover:border-white/20 hover:text-zinc-200"
               )}
-              {busy ? "در حال تولید…" : `تولید ${faNum(count)} کانفیگ`}
-            </Button>
-          </div>
+            >
+              {faNum(c)}
+            </button>
+          ))}
         </div>
 
-        {busy && progress.total > 0 && (
-          <div className="mt-4">
-            <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold">
-              <span className="text-slate-300">
-                {faNum(progress.done)} از {faNum(progress.total)}
-              </span>
-              <span className="font-mono text-cyan-300">{faNum(pct)}٪</span>
-            </div>
-            <div className="h-2.5 overflow-hidden rounded-full bg-white/[0.06]">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-l from-cyan-400 via-violet-500 to-fuchsia-500"
-                animate={{ width: `${pct}%` }}
-                transition={{ ease: "easeOut", duration: 0.4 }}
-              />
-            </div>
+        <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-[11px] leading-6 text-zinc-500">
+          <Globe className="mt-0.5 size-4 shrink-0 text-zinc-400" />
+          <p>
+            حداکثر {faNum(5000)} در هر بار. کانفیگ‌های تکراری (با اثرانگشت یکتا) به‌صورت خودکار حذف می‌شوند،
+            پس اجرای دوباره فقط موارد جدید را اضافه می‌کند. تا {faNum(150)} کانفیگ تازه هم بلافاصله تست اتصال
+            واقعی می‌شوند. ساخت ۱ میلیون کانفیگ الکی دیگر پشتیبانی نمی‌شود — چون آن‌ها واقعی نبودند و هیچ‌وقت کار نمی‌کردند.
+          </p>
+        </div>
+
+        <button
+          onClick={run}
+          disabled={busy}
+          className={cn(
+            "mt-6 flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-l from-cyan-400 to-violet-500 px-6 py-4 text-[15px] font-black text-zinc-950 shadow-[0_0_36px_rgba(34,211,238,0.35)] transition",
+            busy ? "cursor-wait opacity-75" : "hover:brightness-110 active:scale-[0.995]"
+          )}
+        >
+          {busy ? <Loader2 className="size-5 animate-spin" /> : <Layers className="size-5" strokeWidth={2.5} />}
+          {busy ? "در حال جمع‌آوری، حذف تکراری و تست اتصال…" : `شروع ساخت ${faNum(count)} کانفیگ`}
+        </button>
+
+        {busy && (
+          <div className="mt-4 overflow-hidden rounded-full bg-white/[0.05]">
+            <div className="shimmer h-1.5 w-full" />
           </div>
+        )}
+
+        {error && (
+          <p className="mt-5 flex items-center gap-2 rounded-xl bg-rose-400/10 px-4 py-3 text-xs font-semibold text-rose-300 ring-1 ring-rose-400/25">
+            <XCircle className="size-4 shrink-0" />
+            {error}
+          </p>
         )}
       </div>
 
-      {/* نتیجه */}
-      {result && (
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass mt-6 rounded-3xl border-emerald-400/20 p-5 sm:p-6"
-        >
-          <div className="flex items-center gap-3">
-            <span className="grid size-11 place-items-center rounded-2xl bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-400/25">
-              <CheckCircle2 className="size-5.5" />
-            </span>
-            <div>
-              <h3 className="text-base font-extrabold text-white">
-                {faNum(result.created)} کانفیگ ساخته شد
-              </h3>
-              <p className="text-xs text-slate-400">
-                همه به‌صورت خودکار در اشتراک‌های «همه کانفیگ‌ها» قرار گرفتند.
-              </p>
+      <AnimatePresence>
+        {report && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mt-6 space-y-4"
+          >
+            {/* خلاصه */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <ReportStat icon={<Database className="size-4" />} label="لینک دریافتی" value={faNum(report.fetchedLines)} tone="text-zinc-200" />
+              <ReportStat icon={<CheckCircle2 className="size-4" />} label="جدیدِ ذخیره‌شده" value={faNum(report.inserted)} tone="text-emerald-300" glow />
+              <ReportStat icon={<ShieldCheck className="size-4" />} label="سالم در تست" value={faNum(report.aliveCount)} tone="text-cyan-300" />
+              <ReportStat icon={<Timer className="size-4" />} label="زمان اجرا" value={faNum(Math.round(report.durationMs / 1000)) + " ثانیه"} tone="text-violet-300" />
             </div>
-          </div>
 
-          {result.shares.length > 0 ? (
-            <>
-              <MonoBox
-                text={result.shares[0]}
-                className="mt-4 max-h-20 whitespace-normal break-all"
-              />
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button
-                  variant="soft"
-                  onClick={async () => {
-                    if (await copyText(result.shares.join("\n")))
-                      push("همه لینک‌ها کپی شد");
-                  }}
-                >
-                  <Copy className="size-4" />
-                  کپی {faNum(result.shares.length)} لینک
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    const blob = new Blob([result.shares.join("\n")], {
-                      type: "text/plain",
-                    });
-                    const a = document.createElement("a");
-                    a.href = URL.createObjectURL(blob);
-                    a.download = `configs-${result.created}.txt`;
-                    a.click();
-                    URL.revokeObjectURL(a.href);
-                  }}
-                >
-                  <Download className="size-4" />
-                  دانلود فایل متنی
-                </Button>
-                <Link href="/configs">
-                  <Button variant="ghost">مشاهده در فهرست</Button>
-                </Link>
+            <div className="glass rounded-3xl p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="flex items-center gap-2 text-sm font-extrabold text-white">
+                  <Radio className="size-4 text-cyan-300" />
+                  جزئیات منابع
+                </h3>
+                <span className="num text-[11px] text-zinc-500">
+                  تکراری: {faNum(report.duplicates)} • نامعتبر: {faNum(report.failed)} • تست‌شده: {faNum(report.tested)}
+                </span>
               </div>
-            </>
-          ) : (
-            <div className="mt-4 rounded-2xl border border-white/[0.07] bg-black/20 p-4 text-[11px] leading-relaxed text-slate-400">
-              برای حجم‌های بالا، لینک‌ها در حافظه مرورگر نگه داشته نمی‌شوند.
-              برای خروجی گرفتن از همه کانفیگ‌ها:
-              <div className="mt-3 flex flex-wrap gap-2">
-                <a href="/api/configs/export?limit=500000" download>
-                  <Button variant="soft">
-                    <Download className="size-4" />
-                    دانلود خروجی از سرور (تا ۵۰۰ هزار)
-                  </Button>
-                </a>
-                <Link href="/configs">
-                  <Button variant="ghost">مشاهده فهرست کانفیگ‌ها</Button>
-                </Link>
-                <Link href="/subs">
-                  <Button variant="ghost">استفاده از لینک اشتراک</Button>
-                </Link>
-              </div>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {report.sources.map((s) => (
+                  <li
+                    key={s.name}
+                    className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5"
+                  >
+                    <span className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
+                      {s.ok ? (
+                        <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                      ) : (
+                        <span className="size-1.5 rounded-full bg-rose-400" />
+                      )}
+                      {s.name}
+                    </span>
+                    <span className="num text-[11px] text-zinc-500">
+                      {s.ok ? `${faNum(s.lines)} لینک` : "در دسترس نبود"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          )}
-        </motion.div>
-      )}
+
+            <Link
+              href="/configs"
+              className="glass glass-hover flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-cyan-300"
+            >
+              مشاهده کانفیگ‌های ساخته‌شده ←
+            </Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ReportStat({ icon, label, value, tone, glow }: { icon: React.ReactNode; label: string; value: string; tone: string; glow?: boolean }) {
+  return (
+    <div className={cn("glass rounded-2xl p-4", glow && "ring-1 ring-emerald-400/30")}>
+      <div className={cn("flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400", tone)}>
+        {icon}
+        {label}
+      </div>
+      <p className={cn("num mt-2 text-xl font-black", tone)}>{value}</p>
     </div>
   );
 }
