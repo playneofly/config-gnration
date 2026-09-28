@@ -2,27 +2,34 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { ensureSchema } from "@/lib/migrate";
 
-const databaseUrl = process.env.DATABASE_URL;
-
 /**
- * اتصال تنبل (lazy): در زمان build یا import ماژول، اتصالی برقرار نمی‌شود
- * و خطا هم پرتاب نمی‌شود؛ فقط هنگام اولین کوئری واقعی Pool ساخته می‌شود.
- * این یعنی deploy روی Cloudflare/Vercel بدون تنظیم env در مرحله build هم
- * با موفقیت build می‌شود و فقط در runtime به DATABASE_URL نیاز دارد.
+ * اتصال تنبل (lazy): نه در build اتصالی برقرار می‌شود نه env خوانده می‌شود؛
+ * DATABASE_URL هنگام اولین کوئریِ واقعی خوانده می‌شود — مهم برای Cloudflare
+ * Workers که env فقط در زمان اجرای request معتبر است.
+ *
+ * max: 3 → وورکرهای کلادفلر در هر اجرا حداکثر ۶ اتصال TCP همزمان دارند؛
+ * پول بزرگ‌تر باعث رقابت با سوکت‌های تست اتصال و خطاهای تصادفی می‌شود.
  */
 const globalForDb = globalThis as typeof globalThis & {
   __configGenPool?: Pool;
 };
 
 function createPool(): Pool {
+  const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error(
-      "DATABASE_URL تنظیم نشده است — یک دیتابیس PostgreSQL بسازید (مثلاً Neon رایگان) و متغیر DATABASE_URL را در تنظیمات هاست قرار دهید."
+      "DATABASE_URL تنظیم نشده است — یک دیتابیس PostgreSQL بسازید (مثلاً Neon رایگان) و در داشبورد کلادفلر: Worker → Settings → Variables and Secrets یک Secret با نام DATABASE_URL اضافه کنید، سپس Redeploy نمایید."
     );
   }
   if (!globalForDb.__configGenPool) {
-    const inner = new Pool({ connectionString: databaseUrl });
-    // قبل از اولین کوئری، جدول‌ها به‌صورت خودکار ساخته می‌شوند (idempotent)
+    const inner = new Pool({
+      connectionString: databaseUrl,
+      max: 3,
+      connectionTimeoutMillis: 8000,
+      idleTimeoutMillis: 10000,
+      keepAlive: true,
+    });
+    // قبل از اولین کوئری، جدول‌ها به‌صورت خودکار ساخته/ارتقا می‌یابند (idempotent)
     globalForDb.__configGenPool = new Proxy(inner, {
       get(target, prop, receiver) {
         if (prop === "query" || prop === "connect") {

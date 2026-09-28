@@ -9,6 +9,15 @@ import { testMany } from "./tester";
 
 export const MAX_BULK_COUNT = 5000;
 
+/**
+ * همزمانی تست اتصال. روی Node معمولی می‌شود عدد بالاتر گذاشت، ولی روی
+ * Cloudflare Workers هر اجرا حداکثر ~۶ اتصال TCP همزمان دارد که حدوداً ۳
+ * تا را هم پول دیتابیس اشغال می‌کند؛ پس ۳ عددی امن برای هر دو محیط است.
+ */
+export const TEST_CONCURRENCY = 3;
+/** سقف تست داخل یک درخواست — با تایم‌اوت ~۲٫۵ ثانیه بدترین حالت ≈ ۲۵ ثانیه */
+export const MAX_TEST_PER_REQUEST = 60;
+
 /** اثرانگشت یکتا برای جلوگیری از تکراری‌ها */
 export function fingerprint(c: ConfigInput): string {
   const identity = c.rawLink
@@ -86,10 +95,13 @@ export function rowToConfigWithShare(row: typeof configs.$inferSelect): ConfigWi
 interface SyncOptions {
   /** تا چند کانفیگ جدید وارد دیتابیس شود */
   maxInsert: number;
-  /** تا چند کانفیگ جدید تست اتصال شوند */
-  maxTest: number;
 }
 
+/**
+ * همگام‌سازی از منابع عمومی: دریافت، پارس و درج در دیتابیس.
+ * تست اتصال عمداً از اینجا جدا شده (testConfigs) تا درخواست‌ها سریع و
+ * سازگار با محدودیت ۶ اتصال همزمان وورکر بمانند.
+ */
 export async function syncFromSources(opts: SyncOptions): Promise<SyncReport> {
   const started = Date.now();
   const sourceResults: SyncSourceResult[] = [];
@@ -147,7 +159,6 @@ export async function syncFromSources(opts: SyncOptions): Promise<SyncReport> {
   }
   const toInsert = parsed.slice(0, opts.maxInsert);
   let inserted = 0;
-  const insertedRows: { id: number; host: string; port: number; security: string; sni: string | null }[] = [];
   const CHUNK = 150;
 
   for (let i = 0; i < toInsert.length; i += CHUNK) {
@@ -157,30 +168,10 @@ export async function syncFromSources(opts: SyncOptions): Promise<SyncReport> {
       .insert(configs)
       .values(rows)
       .onConflictDoNothing({ target: configs.fingerprint })
-      .returning({
-        id: configs.id,
-        host: configs.host,
-        port: configs.port,
-        security: configs.security,
-        sni: configs.sni,
-      });
+      .returning({ id: configs.id });
     inserted += result.length;
-    insertedRows.push(...result);
   }
   duplicates += toInsert.length - inserted + Math.max(0, parsed.length - toInsert.length);
-
-  // تست اتصال واقعی روی کانفیگ‌های تازه
-  const testTargets = insertedRows.slice(0, opts.maxTest);
-  let aliveCount = 0;
-  if (testTargets.length > 0) {
-    await testMany(testTargets, 120, 1500, async (target, r) => {
-      if (r.alive) aliveCount++;
-      await db
-        .update(configs)
-        .set({ alive: r.alive, latency: r.latency, lastTestedAt: new Date() })
-        .where(eq(configs.id, target.id));
-    });
-  }
 
   const report: SyncReport = {
     fetchedLines: allLinks.length,
@@ -188,8 +179,8 @@ export async function syncFromSources(opts: SyncOptions): Promise<SyncReport> {
     inserted,
     duplicates,
     failed,
-    tested: testTargets.length,
-    aliveCount,
+    tested: 0,
+    aliveCount: 0,
     sources: sourceResults,
     durationMs: Date.now() - started,
   };
@@ -200,8 +191,8 @@ export async function syncFromSources(opts: SyncOptions): Promise<SyncReport> {
     inserted: report.inserted,
     duplicates: report.duplicates,
     failed: report.failed,
-    tested: report.tested,
-    aliveCount: report.aliveCount,
+    tested: 0,
+    aliveCount: 0,
     sourcesOk: sourceResults.filter((s) => s.ok).length,
     sourcesTotal: sourceResults.length,
     detail: sourceResults.map((s) => ({ name: s.name, lines: s.lines, ok: s.ok })),
@@ -210,12 +201,55 @@ export async function syncFromSources(opts: SyncOptions): Promise<SyncReport> {
   return report;
 }
 
-/** انتخاب تصادفی یک کانفیگ سالم از دیتابیس */
-export async function pickRandomAlive(): Promise<ConfigWithShare | null> {
+/**
+ * تست اتصال واقعی روی کانفیگ‌های تست‌نشده (و بعد قدیمی‌ترین‌ها).
+ * تعداد با limit محدود می‌شود تا درخواست HTTP به‌موقع برگردد.
+ */
+export async function testConfigs(opts?: {
+  limit?: number;
+  concurrency?: number;
+}): Promise<{ tested: number; alive: number; dead: number }> {
+  const limit = Math.min(MAX_TEST_PER_REQUEST, Math.max(1, opts?.limit ?? 24));
+  const concurrency = Math.min(TEST_CONCURRENCY, Math.max(1, opts?.concurrency ?? TEST_CONCURRENCY));
+
+  const targets = await db
+    .select({
+      id: configs.id,
+      host: configs.host,
+      port: configs.port,
+      security: configs.security,
+      sni: configs.sni,
+    })
+    .from(configs)
+    .where(
+      sql`${configs.enabled} = true AND ${configs.transport} <> 'udp'
+          AND ${configs.protocol} NOT IN ('hysteria2','tuic')
+          AND (${configs.alive} IS NULL OR ${configs.lastTestedAt} < now() - interval '2 hours')`
+    )
+    .orderBy(sql`${configs.alive} IS NULL DESC`, sql`${configs.lastTestedAt} ASC NULLS FIRST`)
+    .limit(limit);
+
+  if (!targets.length) return { tested: 0, alive: 0, dead: 0 };
+
+  let alive = 0;
+  await testMany(targets, concurrency, 2500, async (t, r) => {
+    if (r.alive) alive++;
+    await db
+      .update(configs)
+      .set({ alive: r.alive, latency: r.latency, lastTestedAt: new Date() })
+      .where(eq(configs.id, t.id));
+  });
+
+  return { tested: targets.length, alive, dead: targets.length - alive };
+}
+
+/** انتخاب تصادفی یک کانفیگ سالم از دیتابیس (اختیاری: فیلتر پروتکل) */
+export async function pickRandomAlive(protocol?: string | null): Promise<ConfigWithShare | null> {
+  const protoCond = protocol ? sql` AND ${configs.protocol} = ${protocol}` : sql``;
   const rows = await db
     .select()
     .from(configs)
-    .where(sql`${configs.enabled} = true AND ${configs.alive} = true`)
+    .where(sql`${configs.enabled} = true AND ${configs.alive} = true${protoCond}`)
     .orderBy(sql`RANDOM()`)
     .limit(1);
   if (rows.length) return rowToConfigWithShare(rows[0]);

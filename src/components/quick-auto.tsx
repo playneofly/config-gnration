@@ -1,9 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, Dices, QrCode, Wand2 } from "lucide-react";
+import { CheckCircle2, Loader2, QrCode, Zap } from "lucide-react";
 import { useState } from "react";
-import { generateAutoConfig } from "@/lib/auto";
 import type { ConfigWithShare, Protocol } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useToast } from "./providers";
@@ -18,10 +17,13 @@ const CHOICES: { value: Choice; label: string }[] = [
   { value: "vmess", label: "VMess" },
   { value: "trojan", label: "Trojan" },
   { value: "shadowsocks", label: "SS" },
-  { value: "wireguard", label: "WARP" },
 ];
 
-/** ساخت کانفیگ کاملاً خودکار با یک کلیک — سرور، پورت، SNI، Path و نام همگی تصادفی */
+/**
+ * ساخت سریع با یک کلیک — یک سرور واقعیِ تست‌شده از مخزن زنده انتخاب می‌کند.
+ * (بدون تولید تصادفیِ الکی؛ همه‌چیز از منابع عمومی جمع و با اتصال TCP واقعی
+ * آزمایش شده است)
+ */
 export default function QuickAutoCreate() {
   const { push } = useToast();
   const [choice, setChoice] = useState<Choice>("random");
@@ -32,16 +34,15 @@ export default function QuickAutoCreate() {
   async function generate() {
     setBusy(true);
     try {
-      const draft = generateAutoConfig(choice);
-      const res = await fetch("/api/configs", {
+      const res = await fetch("/api/single", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({ protocol: choice }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "خطا");
       setResult(data.item);
-      push("کانفیگ خودکار ساخته شد");
+      push("کانفیگ واقعی آماده شد");
     } catch (e) {
       push(e instanceof Error ? e.message : "خطا در ساخت کانفیگ", "error");
     } finally {
@@ -56,18 +57,18 @@ export default function QuickAutoCreate() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-base font-extrabold text-white">
             <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-violet-500 shadow-lg">
-              <Wand2 className="size-4.5 text-white" />
+              <Zap className="size-4.5 text-white" />
             </span>
-            ساخت خودکار — فقط دکمه را بزنید
+            ساخت سریع — واقعی و تست‌شده
           </h2>
           <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/25">
-            سرور + پورت + SNI + Path: اتوماتیک
+            منبع زنده + تست اتصال TCP واقعی
           </span>
         </div>
         <p className="mt-2.5 text-xs leading-relaxed text-slate-400">
-          آدرس سرور از IPهای تمیز کلادفلر، پورت از پورت‌های TLS، SNI از
-          دامنه‌های معتبر و Path به‌صورت تصادفی ساخته می‌شود. شما فقط پروتکل را
-          انتخاب کنید (یا بگذارید روی تصادفی).
+          با هر کلیک یک سرور واقعی از مخزن برمی‌گردانیم که اتصالش همین حالا
+          آزمایش شده. اگر مخزن خالی باشد، ابتدا از منابع عمومی به‌روزرسانی و
+          بعد تست می‌شود — برای همین اولین بار ممکن است چند ثانیه طول بکشد.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-1.5">
@@ -92,13 +93,22 @@ export default function QuickAutoCreate() {
           disabled={busy}
           className="mt-4 w-full bg-gradient-to-l from-cyan-500 via-violet-500 to-fuchsia-500 py-3 text-base shadow-[0_10px_36px_rgba(34,211,238,0.3)]"
         >
-          <Dices className={cn("size-5", busy && "animate-spin")} />
-          {busy ? "در حال تولید…" : "ساخت خودکار کانفیگ"}
+          {busy ? (
+            <Loader2 className="size-5 animate-spin" />
+          ) : (
+            <Zap className="size-5" strokeWidth={2.5} />
+          )}
+          {busy
+            ? "در حال انتخاب و تست سرور واقعی…"
+            : result
+              ? "یک کانفیگ واقعی دیگر"
+              : "ساخت کانفیگ واقعی"}
         </Button>
 
         <AnimatePresence>
           {result && (
             <motion.div
+              key={result.id}
               initial={{ opacity: 0, y: 14, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -8, height: 0 }}
@@ -115,6 +125,11 @@ export default function QuickAutoCreate() {
                     {result.host}:{result.port}
                   </span>
                 </div>
+                {typeof result.latency === "number" && (
+                  <p className="num mt-2 text-[11px] font-bold text-emerald-300">
+                    پینگ تست: {result.latency}ms
+                  </p>
+                )}
                 <MonoBox
                   text={result.share}
                   className="mt-3 max-h-24 whitespace-normal break-all"
@@ -126,13 +141,13 @@ export default function QuickAutoCreate() {
                     QR
                   </Button>
                   <Button variant="ghost" className="flex-1" onClick={generate} disabled={busy}>
-                    <Dices className="size-4" />
+                    <Zap className="size-4" />
                     یکی دیگر
                   </Button>
                 </div>
                 <p className="mt-3 text-[10px] leading-relaxed text-slate-500">
-                  این کانفیگ در فهرست کانفیگ‌ها و در اشتراک‌های «همه کانفیگ‌ها»
-                  قرار گرفت. برای تغییر دستی جزئیات، آن را ویرایش کنید.
+                  این کانفیگ از مخزن زنده انتخاب شده و قبلاً در فهرست کانفیگ‌ها
+                  و اشتراک‌های شما موجود است.
                 </p>
               </div>
             </motion.div>
